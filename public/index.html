@@ -1,59 +1,55 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Login - Bengkel Digital</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 <div class="container">
   <div class="card">
     <h1>🔧 Bengkel Digital SMK</h1>
-    <p style="color: rgba(255,255,255,0.6); text-align:center;">Simulasi Dunia Kerja - TKR</p>
-    <hr>
+    <p class="subtitle">Simulasi Dunia Kerja - TKR</p>
+    <hr />
     <form id="loginForm">
       <div class="form-group">
-        <label>ID Pengguna</label>
-        <input type="text" id="username" placeholder="Guru: g1 | Siswa: s1 / s2" required>
+        <label for="username">ID Pengguna</label>
+        <input type="text" id="username" placeholder="Contoh: g1 atau s1" required />
       </div>
       <div class="form-group">
-        <label>Password</label>
-        <input type="password" id="password" placeholder="guru123 / siswa123" required>
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="Masukkan password" required />
       </div>
-      <button type="submit" class="btn btn-primary" style="width:100%;">Masuk ke Bengkel</button>
-      <div id="errorMsg" style="color:#e74c3c; margin-top:12px; text-align:center;"></div>
+      <button type="submit" class="btn btn-primary full">Masuk</button>
+      <div id="loginMsg" class="msg-error"></div>
     </form>
-    <p style="font-size:0.8rem; color:rgba(255,255,255,0.3); margin-top:15px; text-align:center;">
-      Demo: Login sebagai Guru untuk membuat tugas, atau sebagai Siswa untuk mengerjakan tugas.
+    <p class="text-center">
+      Belum punya akun? <a href="/register" class="link">Daftar di sini</a>
     </p>
+    <p class="text-muted small"></p>
   </div>
 </div>
-
 <script>
-document.getElementById('loginForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const username = document.getElementById('username').value.trim();
-  const password = document.getElementById('password').value.trim();
-  const errorDiv = document.getElementById('errorMsg');
-  errorDiv.textContent = '';
-
-  try {
-    const res = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      return errorDiv.textContent = err.error || 'Login gagal!';
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value.trim();
+    const msg = document.getElementById('loginMsg');
+    msg.textContent = '';
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Login gagal');
+      window.location.href = data.role === 'guru' ? '/guru' : '/siswa';
+    } catch (err) {
+      msg.textContent = '❌ ' + err.message;
     }
-    const data = await res.json();
-    window.location.href = data.role === 'guru' ? '/guru' : '/siswa';
-  } catch (err) {
-    errorDiv.textContent = 'Terjadi kesalahan koneksi.';
-  }
-});
+  });
 </script>
 </body>
 </html>

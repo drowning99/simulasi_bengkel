@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Daftar - Bengkel Digital</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <h1>📝 Daftar Akun</h1>
+    <p class="subtitle">Isi data untuk mendaftar</p>
+    <hr />
+    <form id="registerForm">
+      <div class="form-group">
+        <label for="regUsername">ID Pengguna (username)</label>
+        <input type="text" id="regUsername" placeholder="Contoh: budi123" required />
+      </div>
+      <div class="form-group">
+        <label for="regName">Nama Lengkap</label>
+        <input type="text" id="regName" placeholder="Contoh: Budi Santoso" required />
+      </div>
+      <div class="form-group">
+        <label for="regPassword">Password (min. 6 karakter)</label>
+        <input type="password" id="regPassword" placeholder="Minimal 6 karakter" required minlength="6" />
+      </div>
+      <div class="form-group">
+        <label for="regRole">Peran</label>
+        <select id="regRole">
+          <option value="siswa">Siswa</option>
+          <option value="guru">Guru</option>
+        </select>
+      </div>
+      <div class="form-group" id="kelasGroup">
+        <label for="regKelas">Kelas (khusus siswa)</label>
+        <input type="text" id="regKelas" placeholder="Contoh: TKR 1" />
+      </div>
+      <button type="submit" class="btn btn-primary full">Daftar</button>
+      <div id="regMsg" class="msg-error"></div>
+    </form>
+    <p class="text-center">Sudah punya akun? <a href="/" class="link">Login di sini</a></p>
+  </div>
+</div>
+<script>
+  document.getElementById('regRole').addEventListener('change', function () {
+    document.getElementById('kelasGroup').style.display = this.value === 'siswa' ? 'block' : 'none';
+  });
+  document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('regUsername').value.trim();
+    const name = document.getElementById('regName').value.trim();
+    const password = document.getElementById('regPassword').value.trim();
+    const role = document.getElementById('regRole').value;
+    const kelas = document.getElementById('regKelas').value.trim();
+    const msg = document.getElementById('regMsg');
+    msg.textContent = '';
+    if (!username || !name || !password) {
+      msg.textContent = '❌ Semua field wajib diisi!';
+      return;
+    }
+    if (password.length < 6) {
+      msg.textContent = '❌ Password minimal 6 karakter!';
+      return;
+    }
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, name, password, role, kelas })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Registrasi gagal');
+      msg.style.color = '#2ecc71';
+      msg.textContent = '✅ ' + data.message + '. Silakan login.';
+      document.getElementById('registerForm').reset();
+    } catch (err) {
+      msg.style.color = '#e74c3c';
+      msg.textContent = '❌ ' + err.message;
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,6 +1,5 @@
 const express = require('express');
 const session = require('express-session');
-const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -9,28 +8,53 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors());
+// ---------- Middleware ----------
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 app.use('/uploads', express.static('uploads'));
 
-// Session (sederhana untuk login)
+// Session (gunakan MemoryStore, untuk produksi ganti dengan Redis)
 app.use(session({
-  secret: 'rahasia_bengkel_smk',
+  secret: process.env.SESSION_SECRET || 'rahasia_bengkel_smk',
   resave: false,
-  saveUninitialized: true,
-  cookie: { secure: false } // set true jika pakai https
+  saveUninitialized: false,
+  cookie: { 
+    secure: process.env.NODE_ENV === 'production', // true jika pakai HTTPS
+    maxAge: 1000 * 60 * 60 * 24 // 1 hari
+  }
 }));
 
-// Setup folder upload & data
-const uploadDir = './uploads';
-const dataDir = './data';
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
+// ---------- Persiapan Folder ----------
+const dirs = ['uploads', 'data'];
+dirs.forEach(dir => {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+});
 
-// Konfigurasi Multer (upload file)
+// ---------- Fungsi Baca/Tulis JSON ----------
+const readJSON = (file) => {
+  try {
+    return JSON.parse(fs.readFileSync(`./data/${file}.json`, 'utf8'));
+  } catch {
+    return [];
+  }
+};
+const writeJSON = (file, data) => {
+  fs.writeFileSync(`./data/${file}.json`, JSON.stringify(data, null, 2));
+};
+
+// ---------- Inisialisasi Data Default ----------
+if (readJSON('users').length === 0) {
+  writeJSON('users', [
+    { id: 'g1', name: 'Pak Andi', role: 'guru', password: 'guru123', kelas: '-' },
+    { id: 's1', name: 'Budi', role: 'siswa', password: 'siswa123', kelas: 'TKR 1' },
+    { id: 's2', name: 'Ani', role: 'siswa', password: 'siswa123', kelas: 'TKR 1' }
+  ]);
+}
+if (readJSON('tasks').length === 0) writeJSON('tasks', []);
+if (readJSON('submissions').length === 0) writeJSON('submissions', []);
+
+// ---------- Konfigurasi Multer ----------
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
   filename: (req, file, cb) => {
@@ -43,49 +67,58 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 });
 
-// ========== FUNGSI BACA/TULIS JSON (Database Sederhana) ==========
-const readJSON = (file) => {
-  try {
-    const data = fs.readFileSync(`./data/${file}.json`, 'utf8');
-    return JSON.parse(data);
-  } catch {
-    return [];
-  }
-};
-const writeJSON = (file, data) => {
-  fs.writeFileSync(`./data/${file}.json`, JSON.stringify(data, null, 2));
-};
-
-// Inisialisasi data default jika kosong
-if (readJSON('users').length === 0) {
-  writeJSON('users', [
-    { id: 'g1', name: 'Pak Andi', role: 'guru', password: 'guru123' },
-    { id: 's1', name: 'Budi', role: 'siswa', password: 'siswa123', kelas: 'TKR 1' },
-    { id: 's2', name: 'Ani', role: 'siswa', password: 'siswa123', kelas: 'TKR 1' }
-  ]);
-}
-if (readJSON('tasks').length === 0) {
-  writeJSON('tasks', []);
-}
-if (readJSON('submissions').length === 0) {
-  writeJSON('submissions', []);
-}
-
-// ========== MIDDLEWARE AUTH ==========
-const isAuthenticated = (req, res, next) => {
+// ---------- Middleware Auth ----------
+const isAuth = (req, res, next) => {
   if (!req.session.user) return res.status(401).json({ error: 'Silakan login' });
   next();
 };
+const isGuru = (req, res, next) => {
+  if (req.session.user?.role !== 'guru') return res.status(403).json({ error: 'Akses hanya untuk guru' });
+  next();
+};
+const isSiswa = (req, res, next) => {
+  if (req.session.user?.role !== 'siswa') return res.status(403).json({ error: 'Akses hanya untuk siswa' });
+  next();
+};
 
-// ========== ROUTES / API ==========
+// ---------- ROUTES ----------
+
+// --- Registrasi ---
+app.post('/api/register', (req, res) => {
+  const { username, name, password, role, kelas } = req.body;
+  if (!username || !name || !password || !role) {
+    return res.status(400).json({ error: 'Semua field wajib diisi' });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password minimal 6 karakter' });
+  }
+  if (!['siswa', 'guru'].includes(role)) {
+    return res.status(400).json({ error: 'Peran tidak valid' });
+  }
+
+  const users = readJSON('users');
+  if (users.find(u => u.id === username)) {
+    return res.status(400).json({ error: 'Username sudah terdaftar' });
+  }
+
+  const newUser = {
+    id: username,
+    name,
+    password, // Untuk demo, sebaiknya hash di produksi
+    role,
+    kelas: role === 'siswa' ? (kelas || '-') : '-'
+  };
+  users.push(newUser);
+  writeJSON('users', users);
+  res.status(201).json({ success: true, message: 'Akun berhasil dibuat, silakan login' });
+});
 
 // --- Login ---
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
   const users = readJSON('users');
   const user = users.find(u => u.id === username && u.password === password);
-  if (!user) return res.status(401).json({ error: 'ID atau password salah!' });
-  
+  if (!user) return res.status(401).json({ error: 'Username atau password salah' });
   req.session.user = user;
   res.json({ role: user.role, name: user.name });
 });
@@ -96,16 +129,13 @@ app.get('/api/logout', (req, res) => {
   res.redirect('/');
 });
 
-// --- GET data user yang login ---
-app.get('/api/me', isAuthenticated, (req, res) => {
+// --- Data user yang login ---
+app.get('/api/me', isAuth, (req, res) => {
   res.json(req.session.user);
 });
 
-// --- GURU: Buat Tugas Baru ---
-app.post('/api/tasks', isAuthenticated, upload.single('file'), (req, res) => {
-  if (req.session.user.role !== 'guru') {
-    return res.status(403).json({ error: 'Hanya guru!' });
-  }
+// --- GURU: Buat tugas ---
+app.post('/api/tasks', isAuth, isGuru, upload.single('file'), (req, res) => {
   const tasks = readJSON('tasks');
   const newTask = {
     id: uuidv4(),
@@ -121,14 +151,13 @@ app.post('/api/tasks', isAuthenticated, upload.single('file'), (req, res) => {
   res.json({ success: true, task: newTask });
 });
 
-// --- SISWA & GURU: Lihat semua tugas ---
-app.get('/api/tasks', isAuthenticated, (req, res) => {
+// --- Semua user: lihat tugas (dengan status untuk siswa) ---
+app.get('/api/tasks', isAuth, (req, res) => {
   const tasks = readJSON('tasks');
-  const submissions = readJSON('submissions');
-  
   if (req.session.user.role === 'siswa') {
+    const submissions = readJSON('submissions');
     const userId = req.session.user.id;
-    const tasksWithStatus = tasks.map(task => {
+    const enriched = tasks.map(task => {
       const sub = submissions.find(s => s.taskId === task.id && s.studentId === userId);
       return {
         ...task,
@@ -136,31 +165,27 @@ app.get('/api/tasks', isAuthenticated, (req, res) => {
         score: sub ? sub.score : null
       };
     });
-    return res.json(tasksWithStatus);
+    return res.json(enriched);
   }
   res.json(tasks);
 });
 
-// --- SISWA: Detail 1 Tugas ---
-app.get('/api/tasks/:id', isAuthenticated, (req, res) => {
+// --- Detail tugas (untuk siswa saat akan mengerjakan) ---
+app.get('/api/tasks/:id', isAuth, (req, res) => {
   const tasks = readJSON('tasks');
   const task = tasks.find(t => t.id === req.params.id);
   if (!task) return res.status(404).json({ error: 'Tugas tidak ditemukan' });
   res.json(task);
 });
 
-// --- SISWA: Kumpulkan Tugas (Upload Jawaban) ---
-app.post('/api/submissions', isAuthenticated, upload.single('file'), (req, res) => {
-  if (req.session.user.role !== 'siswa') {
-    return res.status(403).json({ error: 'Hanya siswa!' });
-  }
+// --- SISWA: Kumpulkan tugas ---
+app.post('/api/submissions', isAuth, isSiswa, upload.single('file'), (req, res) => {
   const submissions = readJSON('submissions');
   const { taskId, textAnswer } = req.body;
   const studentId = req.session.user.id;
 
-  const existingIndex = submissions.findIndex(s => s.taskId === taskId && s.studentId === studentId);
-  
-  const submissionData = {
+  const existing = submissions.findIndex(s => s.taskId === taskId && s.studentId === studentId);
+  const data = {
     taskId,
     studentId,
     studentName: req.session.user.name,
@@ -172,64 +197,76 @@ app.post('/api/submissions', isAuthenticated, upload.single('file'), (req, res) 
     feedback: null
   };
 
-  if (existingIndex > -1) {
-    submissions[existingIndex] = { ...submissions[existingIndex], ...submissionData, status: 'pending' };
+  if (existing > -1) {
+    submissions[existing] = { ...submissions[existing], ...data, status: 'pending' };
   } else {
-    submissions.push(submissionData);
+    submissions.push(data);
   }
-
   writeJSON('submissions', submissions);
   res.json({ success: true });
 });
 
-// --- GURU: Lihat semua jawaban siswa untuk suatu tugas ---
-app.get('/api/submissions/task/:taskId', isAuthenticated, (req, res) => {
-  if (req.session.user.role !== 'guru') {
-    return res.status(403).json({ error: 'Hanya guru!' });
-  }
+// --- GURU: Lihat semua jawaban untuk suatu tugas ---
+app.get('/api/submissions/task/:taskId', isAuth, isGuru, (req, res) => {
   const submissions = readJSON('submissions');
   const filtered = submissions.filter(s => s.taskId === req.params.taskId);
   res.json(filtered);
 });
 
-// --- GURU: Beri nilai & feedback (ENDPOINT YANG SUDAH DIPERBAIKI) ---
-app.put('/api/submissions/grade', isAuthenticated, (req, res) => {
-  if (req.session.user.role !== 'guru') {
-    return res.status(403).json({ error: 'Hanya guru!' });
-  }
-  
+// --- GURU: Beri nilai ---
+app.put('/api/submissions/grade', isAuth, isGuru, (req, res) => {
   const { taskId, studentId, score, feedback } = req.body;
   if (!taskId || !studentId || score === undefined) {
-    return res.status(400).json({ error: 'Data tidak lengkap (taskId, studentId, score)' });
+    return res.status(400).json({ error: 'Data tidak lengkap' });
   }
-
   const submissions = readJSON('submissions');
-  const index = submissions.findIndex(s => s.taskId === taskId && s.studentId === studentId);
-  
-  if (index === -1) {
-    return res.status(404).json({ error: 'Submission tidak ditemukan' });
-  }
+  const idx = submissions.findIndex(s => s.taskId === taskId && s.studentId === studentId);
+  if (idx === -1) return res.status(404).json({ error: 'Submission tidak ditemukan' });
 
-  submissions[index].score = parseInt(score);
-  submissions[index].feedback = feedback || '';
-  submissions[index].status = 'reviewed';
-  
+  submissions[idx].score = parseInt(score);
+  submissions[idx].feedback = feedback || '';
+  submissions[idx].status = 'reviewed';
   writeJSON('submissions', submissions);
-  res.json({ success: true, message: 'Nilai berhasil disimpan!' });
+  res.json({ success: true, message: 'Nilai berhasil disimpan' });
 });
 
-// --- SISWA: Lihat riwayat nilainya sendiri ---
-app.get('/api/my-submissions', isAuthenticated, (req, res) => {
-  if (req.session.user.role !== 'siswa') return res.status(403).json({ error: 'Akses ditolak' });
+// --- SISWA: Riwayat nilainya sendiri ---
+app.get('/api/my-submissions', isAuth, isSiswa, (req, res) => {
   const submissions = readJSON('submissions');
   const mine = submissions.filter(s => s.studentId === req.session.user.id);
   res.json(mine);
 });
 
-// ========== SERVE HTML ==========
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.get('/guru', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard-guru.html')));
-app.get('/siswa', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard-siswa.html')));
+// ---------- SERVE HTML (dengan redirect otomatis jika sudah login) ----------
+app.get('/', (req, res) => {
+  if (req.session.user) {
+    return res.redirect(req.session.user.role === 'guru' ? '/guru' : '/siswa');
+  }
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
-// Start server
-app.listen(PORT, () => console.log(`🚗 Bengkel Digital running on port ${PORT}`));
+app.get('/register', (req, res) => {
+  if (req.session.user) {
+    return res.redirect(req.session.user.role === 'guru' ? '/guru' : '/siswa');
+  }
+  res.sendFile(path.join(__dirname, 'public', 'register.html'));
+});
+
+app.get('/guru', (req, res) => {
+  if (!req.session.user || req.session.user.role !== 'guru') {
+    return res.redirect('/');
+  }
+  res.sendFile(path.join(__dirname, 'public', 'dashboard-guru.html'));
+});
+
+app.get('/siswa', (req, res) => {
+  if (!req.session.user || req.session.user.role !== 'siswa') {
+    return res.redirect('/');
+  }
+  res.sendFile(path.join(__dirname, 'public', 'dashboard-siswa.html'));
+});
+
+// ---------- START SERVER ----------
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚗 Bengkel Digital running on port ${PORT}`);
+});
