@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Guru - Bengkel Digital</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2>👨‍🏫 Dashboard Kepala Bengkel</h2>
+      <button onclick="location.href='/api/logout'" class="btn btn-danger">Logout</button>
+    </div>
+    <p>Selamat datang, <strong id="guruName"></strong></p>
+    <hr>
+
+    <h3>📝 Buat Tugas Baru</h3>
+    <form id="createTaskForm" enctype="multipart/form-data">
+      <div class="form-group">
+        <label>Judul Tugas</label>
+        <input type="text" name="title" placeholder="Contoh: Diagnosa Mesin Overheat" required>
+      </div>
+      <div class="form-group">
+        <label>Deskripsi Kasus</label>
+        <textarea name="description" placeholder="Jelaskan kasus yang terjadi pada kendaraan. Misal: Mobil Avanza keluar asap putih dan suhu tinggi. Jelaskan 5 langkah diagnosis!" rows="4" required></textarea>
+      </div>
+      <div class="form-group">
+        <label>Deadline</label>
+        <input type="datetime-local" name="deadline" required>
+      </div>
+      <div class="form-group">
+        <label>Unggah Gambar Referensi (Foto Dashboard / Kerusakan) - Opsional</label>
+        <input type="file" name="file" accept="image/*,application/pdf">
+      </div>
+      <button type="submit" class="btn btn-primary">Kirim Tugas</button>
+      <div id="taskMsg" style="margin-top:10px;"></div>
+    </form>
+    <hr>
+
+    <h3>📋 Daftar Tugas & Lihat Jawaban Siswa</h3>
+    <div id="taskList"></div>
+  </div>
+</div>
+
+<script>
+let currentTaskId = null;
+
+// Ambil data user
+fetch('/api/me').then(r => r.json()).then(user => {
+  document.getElementById('guruName').textContent = user.name;
+});
+
+// Load daftar tugas
+async function loadTasks() {
+  try {
+    const res = await fetch('/api/tasks');
+    const tasks = await res.json();
+    const container = document.getElementById('taskList');
+    if (tasks.length === 0) {
+      container.innerHTML = '<p style="color:rgba(255,255,255,0.5);">Belum ada tugas. Buat tugas baru di atas!</p>';
+      return;
+    }
+    container.innerHTML = tasks.map(t => `
+      <div style="border:1px solid rgba(255,255,255,0.1); padding:15px; margin:12px 0; border-radius:12px; background:rgba(255,255,255,0.03);">
+        <strong style="color:#ffd200;">${t.title}</strong> 
+        <span style="color:rgba(255,255,255,0.5); font-size:0.9rem;">(Deadline: ${new Date(t.deadline).toLocaleString()})</span>
+        <br>
+        ${t.fileRef ? `<a href="/uploads/${t.fileRef}" target="_blank" style="color:#ffd200;">📎 Lihat Referensi</a>` : ''}
+        <button onclick="viewSubmissions('${t.id}')" class="btn btn-secondary" style="margin-left:10px;">Lihat Jawaban Siswa</button>
+      </div>
+    `).join('');
+  } catch (err) {
+    console.error(err);
+  }
+}
+loadTasks();
+
+// Submit Tugas
+document.getElementById('createTaskForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const formData = new FormData(e.target);
+  const msgDiv = document.getElementById('taskMsg');
+  msgDiv.textContent = 'Mengirim tugas...';
+  msgDiv.style.color = 'white';
+  
+  try {
+    const res = await fetch('/api/tasks', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      msgDiv.innerHTML = '✅ Tugas berhasil dibuat! Halaman akan refresh...';
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      msgDiv.innerHTML = '❌ Gagal: ' + (data.error || 'Unknown error');
+      msgDiv.style.color = '#e74c3c';
+    }
+  } catch (err) {
+    msgDiv.innerHTML = '❌ Terjadi kesalahan koneksi.';
+    msgDiv.style.color = '#e74c3c';
+  }
+});
+
+// Lihat submissions (REVISI: panggil endpoint grade yang benar)
+window.viewSubmissions = async (taskId) => {
+  try {
+    const res = await fetch(`/api/submissions/task/${taskId}`);
+    const subs = await res.json();
+    const container = document.getElementById('taskList');
+    
+    if (subs.length === 0) {
+      alert('Belum ada siswa yang mengumpulkan tugas ini.');
+      return;
+    }
+
+    let html = `<button onclick="loadTasks()" class="btn btn-secondary" style="margin-bottom:15px;">⬅ Kembali ke Daftar Tugas</button>`;
+    html += `<h4>📥 Jawaban Siswa untuk Tugas:</h4>`;
+    
+    subs.forEach(s => {
+      const isReviewed = s.status === 'reviewed';
+      html += `
+        <div style="border:1px solid rgba(255,255,255,0.15); padding:15px; margin:12px 0; border-radius:12px; background:rgba(255,255,255,0.03);">
+          <strong>👤 ${s.studentName}</strong> 
+          <span style="color:${isReviewed ? '#2ecc71' : '#f39c12'};">Status: ${isReviewed ? '✅ Dinilai' : '⏳ Menunggu'}</span>
+          <br>
+          <strong>Jawaban Teks:</strong>
+          <p style="background:rgba(0,0,0,0.2); padding:10px; border-radius:8px; white-space:pre-wrap;">${s.textAnswer || '-'}</p>
+          ${s.filePath ? `<a href="/uploads/${s.filePath}" target="_blank" style="color:#ffd200;">📎 Lihat File Unggahan</a>` : ''}
+          <br>
+          ${isReviewed ? `
+            <div style="margin-top:10px; background:rgba(46,204,113,0.1); padding:10px; border-radius:8px; border-left:3px solid #2ecc71;">
+              <strong>Nilai:</strong> ${s.score} | <strong>Feedback:</strong> ${s.feedback || '-'}
+            </div>
+          ` : `
+            <form onsubmit="gradeSubmission(event, '${taskId}', '${s.studentId}')" style="margin-top:10px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+              <input type="number" name="score" placeholder="Nilai (0-100)" required style="width:120px;">
+              <input type="text" name="feedback" placeholder="Feedback (contoh: Bagus, tapi kurang langkah x)" style="flex:1; min-width:150px;">
+              <button type="submit" class="btn btn-primary">Beri Nilai</button>
+            </form>
+          `}
+        </div>
+      `;
+    });
+    container.innerHTML = html;
+  } catch (err) {
+    alert('Gagal memuat jawaban siswa.');
+  }
+};
+
+// Fungsi memberi nilai (REVISI: endpoint sudah benar /api/submissions/grade)
+window.gradeSubmission = async (e, taskId, studentId) => {
+  e.preventDefault();
+  const form = e.target;
+  const score = form.score.value;
+  const feedback = form.feedback.value;
+  const submitBtn = form.querySelector('button[type="submit"]');
+  submitBtn.textContent = 'Menyimpan...';
+  submitBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/submissions/grade', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskId, studentId, score, feedback })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert('✅ ' + data.message);
+      // Refresh tampilan untuk melihat perubahan status
+      viewSubmissions(taskId);
+    } else {
+      alert('❌ Gagal: ' + (data.error || 'Unknown error'));
+      submitBtn.textContent = 'Beri Nilai';
+      submitBtn.disabled = false;
+    }
+  } catch (err) {
+    alert('❌ Terjadi kesalahan koneksi.');
+    submitBtn.textContent = 'Beri Nilai';
+    submitBtn.disabled = false;
+  }
+};
+</script>
+</body>
+</html>

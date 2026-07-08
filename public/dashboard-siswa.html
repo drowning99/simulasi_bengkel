@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Siswa - Bengkel Digital</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2>🧑‍🔧 Ruang Kerja Teknisi</h2>
+      <button onclick="location.href='/api/logout'" class="btn btn-danger">Logout</button>
+    </div>
+    <p>Selamat datang, <strong id="siswaName"></strong></p>
+    <hr>
+
+    <h3>📬 Tugas Masuk</h3>
+    <div id="taskList"></div>
+    
+    <hr>
+    <h3>📊 Riwayat Nilai Saya</h3>
+    <div id="myScores"></div>
+  </div>
+</div>
+
+<script>
+let currentTaskId = null;
+
+fetch('/api/me').then(r => r.json()).then(user => {
+  document.getElementById('siswaName').textContent = user.name;
+});
+
+async function loadData() {
+  try {
+    // Load Tugas
+    const tasksRes = await fetch('/api/tasks');
+    const tasks = await tasksRes.json();
+    const container = document.getElementById('taskList');
+    
+    if (tasks.length === 0) {
+      container.innerHTML = '<p style="color:rgba(255,255,255,0.5);">Belum ada tugas dari guru.</p>';
+    } else {
+      container.innerHTML = tasks.map(t => {
+        let statusText = t.status || 'Belum';
+        let btnDisabled = (statusText === 'reviewed' || statusText === 'pending') ? 'disabled' : '';
+        let btnText = statusText === 'reviewed' ? '✅ Selesai' : (statusText === 'pending' ? '⏳ Menunggu Nilai' : '🚀 Kerjakan');
+        let scoreText = t.score !== null ? `| Nilai: ${t.score}` : '';
+        
+        return `
+          <div style="border:1px solid rgba(255,255,255,0.1); padding:15px; margin:12px 0; border-radius:12px; background:rgba(255,255,255,0.03);">
+            <strong style="color:#ffd200;">${t.title}</strong> 
+            <span style="color:rgba(255,255,255,0.5); font-size:0.9rem;">(Deadline: ${new Date(t.deadline).toLocaleString()})</span>
+            <br>
+            <span>Status: ${statusText}</span> ${scoreText}
+            <br>
+            <button onclick="openTask('${t.id}')" class="btn btn-secondary" ${btnDisabled}>
+              ${btnText}
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Load riwayat nilai
+    const scoreRes = await fetch('/api/my-submissions');
+    const scores = await scoreRes.json();
+    const scoreDiv = document.getElementById('myScores');
+    if (scores.length === 0) {
+      scoreDiv.innerHTML = '<p style="color:rgba(255,255,255,0.5);">Belum ada nilai atau belum mengerjakan tugas.</p>';
+    } else {
+      // Ambil judul tugas untuk ditampilkan
+      const tasksRes2 = await fetch('/api/tasks');
+      const allTasks = await tasksRes2.json();
+      
+      scoreDiv.innerHTML = scores.map(s => {
+        const task = allTasks.find(t => t.id === s.taskId);
+        const title = task ? task.title : 'Tugas (dihapus)';
+        return `
+          <div style="border-bottom:1px solid rgba(255,255,255,0.05); padding:8px 0;">
+            <strong>${title}</strong> | 
+            Nilai: ${s.score !== null ? s.score : 'Menunggu'} | 
+            Feedback: ${s.feedback || '-'}
+          </div>
+        `;
+      }).join('');
+    }
+  } catch (err) {
+    console.error(err);
+    document.getElementById('taskList').innerHTML = '<p style="color:#e74c3c;">Gagal memuat data.</p>';
+  }
+}
+loadData();
+
+// Buka detail tugas untuk dikerjakan
+window.openTask = async (taskId) => {
+  currentTaskId = taskId;
+  try {
+    const res = await fetch(`/api/tasks/${taskId}`);
+    const task = await res.json();
+    
+    const container = document.getElementById('taskList');
+    container.innerHTML = `
+      <button onclick="loadData()" class="btn btn-secondary" style="margin-bottom:15px;">⬅ Kembali ke Daftar</button>
+      <div style="border:1px solid rgba(255,255,255,0.1); padding:20px; border-radius:12px;">
+        <h3 style="color:#ffd200;">${task.title}</h3>
+        <p><strong>Deskripsi Kasus:</strong></p>
+        <p style="background:rgba(0,0,0,0.2); padding:15px; border-radius:8px; white-space:pre-wrap;">${task.description}</p>
+        <p><strong>Deadline:</strong> ${new Date(task.deadline).toLocaleString()}</p>
+        ${task.fileRef ? `<a href="/uploads/${task.fileRef}" target="_blank" style="color:#ffd200;">📎 Lihat Gambar Referensi</a>` : ''}
+        <hr>
+        <h4>📝 Kumpulkan Jawaban</h4>
+        <form id="submitForm" enctype="multipart/form-data">
+          <div class="form-group">
+            <label>Jawaban Teks (Langkah-langkah diagnosis / prosedur)</label>
+            <textarea name="textAnswer" placeholder="Tulis langkah-langkah diagnosis secara urut..." rows="5"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Unggah Foto Sketsa / Laporan (Opsional)</label>
+            <input type="file" name="file" accept="image/*,application/pdf">
+          </div>
+          <input type="hidden" name="taskId" value="${taskId}">
+          <button type="submit" class="btn btn-primary">Kumpulkan Tugas</button>
+        </form>
+        <div id="submitMsg" style="margin-top:10px;"></div>
+      </div>
+    `;
+
+    // Event submit
+    document.getElementById('submitForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const msgDiv = document.getElementById('submitMsg');
+      msgDiv.textContent = 'Mengirim jawaban...';
+      msgDiv.style.color = 'white';
+      
+      try {
+        const res = await fetch('/api/submissions', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          msgDiv.innerHTML = '✅ Jawaban berhasil dikirim! Halaman akan refresh...';
+          msgDiv.style.color = '#2ecc71';
+          setTimeout(() => loadData(), 1500);
+        } else {
+          msgDiv.innerHTML = '❌ Gagal: ' + (data.error || 'Unknown error');
+          msgDiv.style.color = '#e74c3c';
+        }
+      } catch (err) {
+        msgDiv.innerHTML = '❌ Terjadi kesalahan koneksi.';
+        msgDiv.style.color = '#e74c3c';
+      }
+    });
+  } catch (err) {
+    alert('Gagal memuat detail tugas.');
+  }
+};
+</script>
+</body>
+</html>
