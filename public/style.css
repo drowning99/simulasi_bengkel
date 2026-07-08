@@ -133,8 +133,8 @@ textarea {
 .msg-error {
   margin-top: 12px;
   text-align: center;
-  color: #e74c3c;
 }
+.msg-error { color: #e74c3c; }
 
 /* Flex */
 .flex-between {
@@ -185,6 +185,13 @@ textarea {
 }
 .grade-form button {
   flex-shrink: 0;
+}
+.score-row {
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  padding: 8px 0;
+}
+.task-detail {
+  margin-top: 15px;
 }
 
 /* Responsive */

@@ -15,7 +15,7 @@
     <form id="loginForm">
       <div class="form-group">
         <label for="username">ID Pengguna</label>
-        <input type="text" id="username" placeholder="Contoh: g1 atau s1" required />
+        <input type="text" id="username" placeholder=/>
       </div>
       <div class="form-group">
         <label for="password">Password</label>
@@ -27,7 +27,6 @@
     <p class="text-center">
       Belum punya akun? <a href="/register" class="link">Daftar di sini</a>
     </p>
-    <p class="text-muted small"></p>
   </div>
 </div>
 <script>
@@ -37,6 +36,7 @@
     const password = document.getElementById('password').value.trim();
     const msg = document.getElementById('loginMsg');
     msg.textContent = '';
+    msg.style.color = '#e74c3c';
     try {
       const res = await fetch('/api/login', {
         method: 'POST',

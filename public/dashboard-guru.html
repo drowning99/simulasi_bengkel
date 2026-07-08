@@ -45,12 +45,12 @@
 </div>
 
 <script>
-  let currentTaskId = null;
-
   // Ambil data user
   fetch('/api/me')
     .then(r => r.json())
-    .then(user => document.getElementById('guruName').textContent = user.name)
+    .then(user => {
+      document.getElementById('guruName').textContent = user.name;
+    })
     .catch(() => window.location.href = '/');
 
   async function loadTasks() {
@@ -82,6 +82,7 @@
     const formData = new FormData(e.target);
     const msg = document.getElementById('taskMsg');
     msg.textContent = 'Mengirim...';
+    msg.style.color = 'white';
     try {
       const res = await fetch('/api/tasks', { method: 'POST', body: formData });
       const data = await res.json();

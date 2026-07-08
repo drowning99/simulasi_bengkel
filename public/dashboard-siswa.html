@@ -25,11 +25,11 @@
 </div>
 
 <script>
-  let currentTaskId = null;
-
   fetch('/api/me')
     .then(r => r.json())
-    .then(user => document.getElementById('siswaName').textContent = user.name)
+    .then(user => {
+      document.getElementById('siswaName').textContent = user.name;
+    })
     .catch(() => window.location.href = '/');
 
   async function loadData() {
@@ -114,6 +114,7 @@
         const formData = new FormData(e.target);
         const msg = document.getElementById('submitMsg');
         msg.textContent = 'Mengirim...';
+        msg.style.color = 'white';
         try {
           const res = await fetch('/api/submissions', { method: 'POST', body: formData });
           const data = await res.json();

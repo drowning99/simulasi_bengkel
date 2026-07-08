@@ -43,9 +43,11 @@
   </div>
 </div>
 <script>
+  // Tampilkan/sembunyikan field kelas
   document.getElementById('regRole').addEventListener('change', function () {
     document.getElementById('kelasGroup').style.display = this.value === 'siswa' ? 'block' : 'none';
   });
+
   document.getElementById('registerForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const username = document.getElementById('regUsername').value.trim();
@@ -55,6 +57,8 @@
     const kelas = document.getElementById('regKelas').value.trim();
     const msg = document.getElementById('regMsg');
     msg.textContent = '';
+    msg.style.color = '#e74c3c';
+    
     if (!username || !name || !password) {
       msg.textContent = '❌ Semua field wajib diisi!';
       return;
@@ -63,6 +67,7 @@
       msg.textContent = '❌ Password minimal 6 karakter!';
       return;
     }
+    
     try {
       const res = await fetch('/api/register', {
         method: 'POST',
@@ -75,7 +80,6 @@
       msg.textContent = '✅ ' + data.message + '. Silakan login.';
       document.getElementById('registerForm').reset();
     } catch (err) {
-      msg.style.color = '#e74c3c';
       msg.textContent = '❌ ' + err.message;
     }
   });
